@@ -27,6 +27,7 @@ public class EmailGeneratorService {
     private String geminiApiKey;
 
     public String generateEmailReply(EmailRequest emailRequest) {
+
         long start = System.currentTimeMillis();
 
         String prompt = buildPrompt(emailRequest);
@@ -42,6 +43,7 @@ public class EmailGeneratorService {
         System.out.println("Sending request to Gemini...");
 
         try {
+
             long apiStart = System.currentTimeMillis();
 
             String response = webClient.post()
@@ -73,35 +75,70 @@ public class EmailGeneratorService {
             return result;
 
         } catch (WebClientResponseException e) {
-            System.out.println("Gemini API Error: " + e.getResponseBodyAsString());
 
-            return "Google API Error (" + e.getStatusCode() + "): "
-                    + e.getResponseBodyAsString();
+            System.out.println(
+                    "Gemini API Error: "
+                            + e.getStatusCode()
+            );
+
+            System.out.println(
+                    "Response: "
+                            + e.getResponseBodyAsString()
+            );
+
+            throw new RuntimeException(
+                    "Gemini API request failed. Please try again later."
+            );
 
         } catch (Exception e) {
+
             e.printStackTrace();
-            return "Application Error: " + e.getMessage();
+
+            throw new RuntimeException(
+                    "Unable to generate email reply. Please try again."
+            );
         }
     }
 
     private String extractResponseContent(String response) {
+
         try {
+
             JsonNode rootNode = mapper.readTree(response);
 
-            return rootNode.path("candidates")
+            JsonNode candidates = rootNode.path("candidates");
+
+            if (!candidates.isArray() || candidates.isEmpty()) {
+                throw new RuntimeException(
+                        "Gemini returned an invalid response."
+                );
+            }
+
+            JsonNode textNode = candidates
                     .get(0)
                     .path("content")
                     .path("parts")
                     .get(0)
-                    .path("text")
-                    .asText();
+                    .path("text");
+
+            if (textNode.isMissingNode() || textNode.asText().isBlank()) {
+                throw new RuntimeException(
+                        "Gemini returned an empty response."
+                );
+            }
+
+            return textNode.asText();
 
         } catch (Exception e) {
-            return "Error parsing response: " + e.getMessage();
+
+            throw new RuntimeException(
+                    "Failed to process Gemini response."
+            );
         }
     }
 
     private String buildPrompt(EmailRequest emailRequest) {
+
         String tone = emailRequest.getTone();
 
         if (tone == null || tone.isBlank()) {
